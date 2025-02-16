@@ -265,8 +265,7 @@
         };
 
         // Koneksi WebSocket
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const ws = new WebSocket(`${wsProtocol}//103.214.23.209:8081`);
+        const ws = new WebSocket(`ws//103.214.23.209:8081`);
 
         ws.onopen = () => {
             const wsConnection = document.getElementById('ws-connection');
