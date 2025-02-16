@@ -158,9 +158,6 @@
     </style>
 </head>
 <body>
-    <div id="loading-overlay">
-        <div class="spinner"></div>
-    </div>
 
     <div class="app-container">
         <div id="map"></div>
@@ -265,13 +262,6 @@
 
             // Fokus peta pada pesawat
             map.setView(position, map.getZoom());
-
-            // Sembunyikan loading
-            const loadingOverlay = document.getElementById('loading-overlay');
-            loadingOverlay.style.opacity = 0;
-            setTimeout(() => {
-                loadingOverlay.style.display = 'none';
-            }, 500);
         };
 
         // Koneksi WebSocket
