@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Advanced Flight Tracker</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --background-color: #ecf0f1;
+            --text-color: #2c3e50;
+            --accent-color: #e74c3c;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body, html {
+            font-family: 'Inter', sans-serif;
+            height: 100%;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #map {
+            flex-grow: 1;
+            position: relative;
+            z-index: 1;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+
+        #flight-info {
+            display: flex;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            padding: 15px;
+            box-shadow: 0 -4px 6px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+
+        .info-panel {
+            flex: 1;
+            padding: 10px;
+            position: relative;
+            border-right: 1px solid rgba(255,255,255,0.1);
+            transition: all 0.3s ease;
+        }
+
+        .info-panel:last-child {
+            border-right: none;
+        }
+
+        .info-panel h3 {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: rgba(255,255,255,0.8);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .info-panel p {
+            font-weight: 300;
+            opacity: 0.9;
+        }
+
+        /* Plane Icon Animation */
+        @keyframes plane-hover {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+
+        .plane-icon {
+            animation: plane-hover 2s infinite ease-in-out;
+            transition: all 0.3s ease;
+        }
+
+        .plane-icon:hover {
+            transform: scale(1.2) rotate(360deg);
+        }
+
+        /* Connection Status */
+        #ws-connection {
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #ws-connection.connected {
+            color: #2ecc71;
+        }
+
+        #ws-connection.disconnected {
+            color: #e74c3c;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            #flight-info {
+                flex-direction: column;
+            }
+
+            .info-panel {
+                border-right: none;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+            }
+        }
+
+        /* Loading Overlay */
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 1;
+            transition: opacity 0.5s ease;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+    </div>
+
+    <div class="app-container">
+        <div id="map"></div>
+        <div id="flight-info">
+            <div class="info-panel" id="basic-info">
+                <h3>Flight Details</h3>
+                <p id="callsign">-</p>
+                <p id="airline">-</p>
+                <p id="aircraft">-</p>
+            </div>
+            <div class="info-panel" id="position-info">
+                <h3>Position</h3>
+                <p id="latitude">Latitude: -</p>
+                <p id="longitude">Longitude: -</p>
+                <p id="altitude">Altitude: -</p>
+            </div>
+            <div class="info-panel" id="status-info">
+                <h3>Flight Status</h3>
+                <p id="heading">Heading: -</p>
+                <p id="speed">Speed: -</p>
+                <p id="vertical-speed">Vertical Speed: -</p>
+            </div>
+            <div class="info-panel" id="connection-info">
+                <h3>Connection</h3>
+                <p id="ws-connection" class="disconnected">WebSocket: Disconnected</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        // Inisialisasi peta dengan tema gelap
+        const map = L.map('map', {
+            center: [0, 0],
+            zoom: 3,
+            zoomControl: false
+        });
+
+        // Tema peta dark mode
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© OpenStreetMap contributors, © CARTO'
+        }).addTo(map);
+
+        // Tambahkan kontrol zoom dengan desain kustom
+        L.control.zoom({
+            position: 'bottomright',
+            zoomInText: '+',
+            zoomOutText: '-'
+        }).addTo(map);
+
+        const flightMarkers = {};
+        const flightPaths = {};
+
+        function updateFlightData(data) {
+            const callsign = `${data.flight_info.airline}${data.flight_info.flight}`;
+            const position = [data.position.latitude, data.position.longitude];
+
+            // Custom plane icon dengan rotasi
+            const planeIcon = L.divIcon({
+                className: 'plane-icon',
+                html: `<div style="transform: rotate(${data.position.heading}deg); color: var(--accent-color); font-size: 30px;">✈️</div>`,
+                iconSize: [30, 30]
+            });
+
+            // Update atau buat marker dengan animasi
+            if (!flightMarkers[callsign]) {
+                flightMarkers[callsign] = L.marker(position, { 
+                    icon: planeIcon,
+                    rotationAngle: data.position.heading
+                }).addTo(map);
+            } else {
+                flightMarkers[callsign]
+                    .setLatLng(position)
+                    .setRotationAngle(data.position.heading);
+            }
+
+            // Update path dengan warna dinamis
+            if (!flightPaths[callsign]) {
+                flightPaths[callsign] = L.polyline([position], {
+                    color: var(--secondary-color),
+                    weight: 3,
+                    opacity: 0.7
+                }).addTo(map);
+            } else {
+                const currentPath = flightPaths[callsign].getLatLngs();
+                currentPath.push(position);
+                flightPaths[callsign].setLatLngs(currentPath);
+            }
+
+            // Update info panel dengan animasi
+            document.getElementById('callsign').textContent = `Callsign: ${callsign}`;
+            document.getElementById('airline').textContent = `Airline: ${data.flight_info.airline}`;
+            document.getElementById('aircraft').textContent = `Aircraft: ${data.flight_info.aircraft_type}`;
+            
+            document.getElementById('latitude').textContent = `Latitude: ${data.position.latitude.toFixed(4)}`;
+            document.getElementById('longitude').textContent = `Longitude: ${data.position.longitude.toFixed(4)}`;
+            document.getElementById('altitude').textContent = `Altitude: ${data.position.altitude} ft`;
+            
+            document.getElementById('heading').textContent = `Heading: ${data.position.heading}°`;
+            document.getElementById('speed').textContent = `Speed: ${data.parameters.ias} knots`;
+            document.getElementById('vertical-speed').textContent = `Vertical Speed: ${data.parameters.vertical_speed} ft/min`;
+
+            // Fokus peta pada pesawat
+            map.setView(position, map.getZoom());
+
+            // Sembunyikan loading
+            document.getElementById('loading-overlay').style.opacity = 0;
+            setTimeout(() => {
+                document.getElementById('loading-overlay').style.display = 'none';
+            }, 500);
+        }
+
+        // Koneksi WebSocket
+        const ws = new WebSocket('ws://103.214.23.209:3000');
+
+        ws.onopen = () => {
+            const wsConnection = document.getElementById('ws-connection');
+            wsConnection.textContent = 'WebSocket: Connected';
+            wsConnection.classList.remove('disconnected');
+            wsConnection.classList.add('connected');
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            updateFlightData(data);
+        };
+
+        ws.onclose = () => {
+            const wsConnection = document.getElementById('ws-connection');
+            wsConnection.textContent = 'WebSocket: Disconnected';
+            wsConnection.classList.remove('connected');
+            wsConnection.classList.add('disconnected');
+        };
+    </script>
+</body>
+</html>
